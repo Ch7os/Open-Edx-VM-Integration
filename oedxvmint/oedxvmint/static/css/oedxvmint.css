@@ -1,0 +1,9 @@
+/* CSS for OpemEdxVMIntegrationXBlock */
+
+.oedxvmint_block .count {
+    font-weight: bold;
+}
+
+.oedxvmint_block p {
+    cursor: pointer;
+}
