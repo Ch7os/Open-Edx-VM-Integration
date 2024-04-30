@@ -1,0 +1,33 @@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+<div class="vm-control-panel">
+    <h2>VM Management</h2>
+    <div class="vm-buttons">
+        <button id="start-vm" class="vm-button">
+            <div class="button-content">
+                <i class="fas fa-play"></i>
+                <span class="icon-text">Start VM</span>
+            </div>
+            <div class="loading-spinner"></div>
+        </button>
+        <button id="stop-vm" class="vm-button" style="visibility: hidden;">
+            <div class="button-content">
+                <i class="fas fa-stop"></i>
+                <span class="icon-text">Stop VM</span>
+            </div>
+        </button>
+        <button id="reset-vm" class="vm-button" style="visibility: hidden;">
+            <div class="button-content">
+                <i class="fas fa-sync"></i>
+                <span class="icon-text">Reset VM</span>
+            </div>
+            <div class="loading-spinner"></div>
+        </button>
+    </div>
+    <div id="vm-ip" class="vm-ip" style="display: none;">
+        IP Address: <span>Not Assigned</span>
+    </div>
+</div>
+
+
+

@@ -1,0 +1,10 @@
+.vm-control, .vm-settings {
+    margin: 10px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    background-color: #f9f9f9;
+}
+
+.vm-control button, .vm-settings button {
+    margin-right: 5px;
+}

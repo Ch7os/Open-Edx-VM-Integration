@@ -1,0 +1,124 @@
+.vm-control-panel {
+    font-family: 'Arial', sans-serif;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px auto;  /* Center the panel */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 300px;  /* Fixed width to accommodate all contents */
+}
+
+.vm-control-panel h2 {
+    color: #333;
+    font-size: 24px;
+}
+
+.vm-buttons {
+    display: flex;
+    justify-content: space-between; /* Space out buttons */
+    width: 100%; /* Full width of the control panel */
+    margin-bottom: 10px; /* Spacing between buttons and IP display */
+}
+
+.vm-button {
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s, box-shadow 0.3s;
+    font-size: 16px;
+    color: white;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-grow: 1; /* Allows the button to grow and fill the space */
+}
+
+.vm-button i {
+    margin-right: 5px;
+}
+
+#start-vm {
+    background-color: #28a745; /* Green */
+    flex-basis: 100%; /* Takes full width when visible */
+}
+
+#start-vm:hover {
+    background-color: #218838;
+}
+
+#stop-vm, #reset-vm {
+    flex-basis: 50%; /* Each takes half of the space */
+    display: none; /* Initially hidden */
+}
+
+#stop-vm {
+    background-color: #dc3545; /* Red */
+}
+
+#stop-vm:hover {
+    background-color: #c82333;
+}
+
+#reset-vm {
+    background-color: #007bff; /* Blue */
+}
+
+#reset-vm:hover {
+    background-color: #0069d9;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+    display: none; /* Hide by default */
+    position: absolute;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    margin: auto;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+}
+
+.vm-ip {
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 16px;
+    width: 100%; /* Full width of the control panel */
+}
+
+.vm-ip span {
+    font-weight: bold;
+    color: #28a745;  /* A green color to make the IP address stand out */
+}
+
+.button-content {
+    visibility: visible;
+    width: 100%; /* Ensure it fills the button */
+}
+
+.hidden-content {
+    visibility: hidden;
+}
+
+.button-content i {
+    display: inline-block; /* Make icon visible inline */
+    margin-right: 5px;
+}

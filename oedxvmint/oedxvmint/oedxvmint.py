@@ -31,11 +31,23 @@ class OpemEdxVMIntegrationXBlock(XBlock):
         The primary view of the OpemEdxVMIntegrationXBlock, shown to students
         when viewing courses.
         """
-        html = self.resource_string("static/html/oedxvmint.html")
+        html = self.resource_string("static/html/student_view.html")
         frag = Fragment(html.format(self=self))
-        frag.add_css(self.resource_string("static/css/oedxvmint.css"))
-        frag.add_javascript(self.resource_string("static/js/src/oedxvmint.js"))
+        frag.add_css(self.resource_string("static/css/student_view.css"))
+        frag.add_javascript(self.resource_string("static/js/src/student_view.js"))
         frag.initialize_js('OpemEdxVMIntegrationXBlock')
+        return frag
+    
+    def studio_view(self, context=None):
+        """
+        The studio view of the OpemEdxVMIntegrationXBlock, used by course 
+        staff when setting up courses.
+        """
+        html = self.resource_string("static/html/studio_view.html")
+        frag = Fragment(html.format(self=self))
+        frag.add_css(self.resource_string("static/css/studio_view.css"))
+        frag.add_javascript(self.resource_string("static/js/src/studio_view.js"))
+        frag.initialize_js('OpemEdxVMIntegrationXBlockStudio')
         return frag
 
     # TO-DO: change this handler to perform your own actions.  You may need more
