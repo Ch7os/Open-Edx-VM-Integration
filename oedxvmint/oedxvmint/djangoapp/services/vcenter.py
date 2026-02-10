@@ -19,6 +19,45 @@ class VCenterClient:
         self.base_url = self.cfg.get("VCENTER_URL", "").rstrip("/")
         self.session = requests.Session()
         self.session.verify = not self.cfg.get("VCENTER_INSECURE", True)
+        self._session_id = None
+        
+        # Authenticate on init if not in stub mode
+        if not self.stub and self.base_url:
+            self._authenticate()
+    
+    def _authenticate(self):
+        """Authenticate with vCenter REST API and store session ID."""
+        username = self.cfg.get("VCENTER_USERNAME")
+        password = self.cfg.get("VCENTER_PASSWORD")
+        
+        if not username or not password:
+            logger.warning("vCenter credentials not configured - authentication will fail")
+            return
+        
+        try:
+            # vCenter REST API session creation
+            auth_url = f"{self.base_url}/api/session"
+            response = self.session.post(
+                auth_url,
+                auth=(username, password),
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            # Extract session ID from response
+            self._session_id = response.json().get("value")
+            
+            # Set session ID in headers for subsequent requests
+            if self._session_id:
+                self.session.headers.update({
+                    "vmware-api-session-id": self._session_id
+                })
+                logger.info("Successfully authenticated with vCenter")
+            else:
+                logger.error("Failed to obtain session ID from vCenter")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("vCenter authentication failed: %s", exc)
+            raise
 
     def _rest(self, method, path, payload=None):
         if self.stub:
@@ -33,6 +72,7 @@ class VCenterClient:
         if self.stub:
             time.sleep(0.2)
             return {"vm": f"vm-{uuid.uuid4()}", "task": f"task-{uuid.uuid4()}"}
+        
         payload = {
             "name": vm_name,
             "placement": {
@@ -43,6 +83,19 @@ class VCenterClient:
             "source": template_ref,
             "guest_customization": {},
         }
+        
+        # Apply network allocation to VM
+        if network_allocation and network_allocation.get("portgroup_name"):
+            portgroup = network_allocation.get("portgroup_name")
+            payload["nics"] = [{
+                "network": portgroup,
+                "type": "VMXNET3",  # Default to VMXNET3, can be made configurable
+            }]
+            logger.info(
+                "Applying network allocation to VM clone",
+                extra={"vm_name": vm_name, "portgroup": portgroup, "strategy": network_allocation.get("strategy")}
+            )
+        
         if cpu:
             payload["cpu"] = {"count": cpu}
         if ram_mb:

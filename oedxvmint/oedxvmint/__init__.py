@@ -1,5 +1,10 @@
 """HTB-like lab integration package for Open edX."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .xblock import HTBLabXBlock
+
 __all__ = ["HTBLabXBlock"]
 
 

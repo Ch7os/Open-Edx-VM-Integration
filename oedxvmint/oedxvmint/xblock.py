@@ -65,6 +65,10 @@ class HTBLabXBlock(StudioEditableXBlockMixin, XBlock):
             "allow_extend": self.allow_extend,
             "extend_minutes": self.extend_minutes,
             "network_strategy": self.network_strategy,
+            # network_config is intentionally empty here - it should be configured
+            # server-side via environment variables (e.g., VCENTER_* settings) to prevent
+            # authors from exposing infrastructure details. Strategy-specific parameters
+            # (pool list, DVS IDs, shared portgroup names) are read from Django settings.
             "network_config": {},
             "vm_specs": self._vm_specs(),
             "author_hint_text": self.author_hint_text,
@@ -99,7 +103,10 @@ class HTBLabXBlock(StudioEditableXBlockMixin, XBlock):
     def validate_vm_specs(self, data, suffix=""):
         """Best effort JSON validation for studio authors."""
         payload = data.get("vm_specs_json", self.vm_specs_json)
-        parsed = json.loads(payload)
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            return {"ok": False, "message": f"Invalid JSON: {exc!s}"}
         if not isinstance(parsed, list) or not parsed:
             return {"ok": False, "message": "vm_specs_json must be a non-empty list"}
         for vm in parsed:

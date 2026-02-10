@@ -16,12 +16,16 @@ def allocate_network(definition, allocation_key):
 
     if strategy == "pool":
         pool = cfg.get("pool", [])
-        used = {
-            i.network_allocation.get("portgroup_name")
-            for i in LabInstance.objects.exclude(network_allocation={})
-            if i.network_allocation.get("strategy") == "pool"
-        }
-        portgroup = pick_portgroup_from_pool(pool, used)
+        # Use DB-side filtering and locking to prevent concurrent allocations
+        with transaction.atomic():
+            # Get used portgroups via DB query on JSONField
+            used = set(
+                LabInstance.objects.select_for_update()
+                .exclude(network_allocation={})
+                .filter(network_allocation__strategy="pool")
+                .values_list("network_allocation__portgroup_name", flat=True)
+            )
+            portgroup = pick_portgroup_from_pool(pool, used)
         return {"strategy": "pool", "portgroup_name": portgroup}
 
     if strategy == "ephemeral":
