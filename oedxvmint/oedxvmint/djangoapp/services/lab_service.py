@@ -70,12 +70,30 @@ class LabService:
             raise RuntimeError("Action rate limited")
 
     def lock_instance(self, instance, seconds=90):
+        """Atomically lock an instance to prevent concurrent operations."""
+        from django.db import transaction
+        from django.db.models import F, Q
+        
         now = timezone.now()
-        if instance.locked_until and instance.locked_until > now:
-            raise RuntimeError("Instance is busy")
-        instance.locked_until = now + timedelta(seconds=seconds)
-        instance.last_action_at = now
-        instance.save(update_fields=["locked_until", "last_action_at", "updated_at"])
+        lock_until = now + timedelta(seconds=seconds)
+        
+        # Atomic update: only lock if not already locked
+        with transaction.atomic():
+            rows_updated = LabInstance.objects.filter(
+                id=instance.id
+            ).filter(
+                Q(locked_until__isnull=True) | Q(locked_until__lte=now)
+            ).update(
+                locked_until=lock_until,
+                last_action_at=now,
+                updated_at=now,
+            )
+            
+            if rows_updated == 0:
+                raise RuntimeError("Instance is busy")
+            
+            # Refresh instance to get updated values
+            instance.refresh_from_db()
 
     def unlock_instance(self, instance):
         instance.locked_until = None

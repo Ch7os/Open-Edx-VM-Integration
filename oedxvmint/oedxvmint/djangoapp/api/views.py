@@ -48,16 +48,23 @@ class LearnerLabView(View):
 
     def _resolve(self, request, course_id, block_id):
         definition = LabDefinition.objects.filter(course_id=course_id, block_id=block_id).first()
-        if not definition and request.method == "POST":
-            cfg = _xblock_config_from_request(request)
-            if not cfg:
-                return None, None, HttpResponseBadRequest("Missing lab definition")
-            definition = self.service.ensure_definition(course_id=course_id, block_id=block_id, xblock_config=cfg)
         if not definition:
-            return None, None, JsonResponse({"state": "missing", "message": "Lab not configured", "vms": []})
+            # Only allow staff to create/update LabDefinition from request-supplied config
+            if request.method == "POST" and is_staff(request.user):
+                cfg = _xblock_config_from_request(request)
+                if not cfg:
+                    return None, None, HttpResponseBadRequest("Missing lab definition")
+                definition = self.service.ensure_definition(course_id=course_id, block_id=block_id, xblock_config=cfg)
+            if not definition:
+                return None, None, JsonResponse({"state": "missing", "message": "Lab not configured", "vms": []})
 
         team_id = _team_id_from_request(request)
-        alloc = self.service.allocation_for(definition, request.user.id, team_id)
+        try:
+            alloc = self.service.allocation_for(definition, request.user.id, team_id)
+        except ValueError as exc:
+            logger.warning("Failed to build allocation key: %s", exc)
+            message = str(exc) or "Invalid or missing team_id for team-based lab"
+            return definition, None, HttpResponseBadRequest(message)
         instance = LabInstance.objects.filter(allocation_key=alloc).first()
         if instance and instance.user_id and instance.user_id != request.user.id and not is_staff(request.user):
             return definition, None, JsonResponse({"message": "Forbidden"}, status=403)
