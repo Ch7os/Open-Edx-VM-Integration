@@ -99,7 +99,10 @@ class HTBLabXBlock(StudioEditableXBlockMixin, XBlock):
     def validate_vm_specs(self, data, suffix=""):
         """Best effort JSON validation for studio authors."""
         payload = data.get("vm_specs_json", self.vm_specs_json)
-        parsed = json.loads(payload)
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            return {"ok": False, "message": f"Invalid JSON: {exc!s}"}
         if not isinstance(parsed, list) or not parsed:
             return {"ok": False, "message": "vm_specs_json must be a non-empty list"}
         for vm in parsed:

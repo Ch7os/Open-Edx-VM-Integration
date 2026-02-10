@@ -33,9 +33,25 @@ function HTBLabXBlock(runtime, element, context) {
         vms.forEach(vm => {
             const card = document.createElement('div');
             card.className = 'htblab-vm-card';
+            
+            const roleHeader = document.createElement('strong');
+            roleHeader.textContent = vm.role || 'Unknown';
+            card.appendChild(roleHeader);
+            
+            const stateDiv = document.createElement('div');
+            stateDiv.textContent = `State: ${vm.state || 'unknown'}`;
+            card.appendChild(stateDiv);
+            
+            const ipsDiv = document.createElement('div');
             const ips = (vm.ips || []).join(', ') || 'IP pending';
+            ipsDiv.textContent = `IPs: ${ips}`;
+            card.appendChild(ipsDiv);
+            
+            const credsDiv = document.createElement('div');
             const creds = vm.creds_visible ? `${vm.username || ''} / ${vm.password || ''}` : 'No credentials provided (target VM)';
-            card.innerHTML = `<strong>${vm.role}</strong><div>State: ${vm.state}</div><div>IPs: ${ips}</div><div>${creds}</div>`;
+            credsDiv.textContent = creds;
+            card.appendChild(credsDiv);
+            
             vmsNode.appendChild(card);
         });
     }
@@ -57,5 +73,35 @@ function HTBLabXBlock(runtime, element, context) {
     });
 
     call('status');
-    setInterval(() => call('status'), 10000);
+    
+    let pollTimer = null;
+    let errorBackoff = 1000;
+    const maxBackoff = 60000;
+    
+    function schedulePoll() {
+        if (pollTimer) {
+            clearTimeout(pollTimer);
+        }
+        pollTimer = setTimeout(async () => {
+            try {
+                await call('status');
+                errorBackoff = 1000; // Reset backoff on success
+                schedulePoll();
+            } catch (err) {
+                console.error('Status poll failed:', err);
+                errorBackoff = Math.min(errorBackoff * 2, maxBackoff);
+                schedulePoll();
+            }
+        }, errorBackoff);
+    }
+    
+    schedulePoll();
+    
+    // Cleanup on unload
+    window.addEventListener('beforeunload', () => {
+        if (pollTimer) {
+            clearTimeout(pollTimer);
+            pollTimer = null;
+        }
+    });
 }
