@@ -110,6 +110,11 @@ class LabService:
         )
 
     def create_instance(self, definition, user_id, team_id=None):
+        """Create a new lab instance.
+        
+        Note: max_instances_per_scope is persisted but not currently enforced.
+        The allocation_key uniqueness constraint effectively limits to 1 instance per scope.
+        """
         allocation_key = self.allocation_for(definition, user_id=user_id, team_id=team_id)
         existing = LabInstance.objects.filter(allocation_key=allocation_key).first()
         if existing:
@@ -184,18 +189,51 @@ class LabService:
         instance.save(update_fields=["expires_at", "updated_at"])
 
     def reset_instance(self, instance):
-        for vm, spec in zip(instance.vms.all(), instance.definition.vm_specs):
+        """Reset the lab instance VMs.
+
+        If all specs have snapshots and there is a 1:1 match between specs and existing
+        VMs (by name), we revert the snapshots in-place. Otherwise, we tear down all
+        existing VMs and reprovision the full topology according to vm_specs.
+        """
+        vms = list(instance.vms.all())
+        vms_by_name = {vm.vm_name: vm for vm in vms}
+
+        # Recompute the expected VM name for each spec in the same way as in
+        # provision_topology, so that we have a stable key for matching.
+        allocation_suffix = instance.allocation_key.split(":")[-1]
+
+        spec_names = []
+        all_specs_have_snapshots = True
+        all_specs_have_matching_vms = True
+
+        for index, spec in enumerate(instance.definition.vm_specs):
+            name = spec.get("name") or f"{allocation_suffix}-{index}"
+            spec_names.append(name)
+
             snapshot = spec.get("snapshot_ref")
-            if snapshot:
+            if not snapshot:
+                all_specs_have_snapshots = False
+
+            vm = vms_by_name.get(name)
+            if vm is None:
+                all_specs_have_matching_vms = False
+
+        # If all specs have snapshots and all VMs match, revert in place
+        if all_specs_have_snapshots and all_specs_have_matching_vms and len(vms_by_name) == len(spec_names):
+            for index, spec in enumerate(instance.definition.vm_specs):
+                name = spec_names[index]
+                vm = vms_by_name[name]
+                snapshot = spec.get("snapshot_ref")
                 self.vc.revert_snapshot(vm.vm_moid, snapshot)
                 self.vc.power_on(vm.vm_moid)
                 vm.state = "running"
                 vm.ip_addresses = self.vc.get_vm_ips(vm.vm_moid)
                 vm.save(update_fields=["state", "ip_addresses", "updated_at"])
-            else:
+        else:
+            # Otherwise, tear down and reprovision full topology
+            for vm in vms:
                 self.vc.delete_vm(vm.vm_moid)
                 vm.delete()
-        if not instance.vms.exists():
             self.provision_topology(instance)
 
     def delete_instance(self, instance):

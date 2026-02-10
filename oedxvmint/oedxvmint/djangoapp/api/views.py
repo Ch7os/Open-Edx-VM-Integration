@@ -42,6 +42,37 @@ def _team_id_from_request(request, fallback=None):
     return request.GET.get("team_id") or body.get("team_id") or fallback
 
 
+def _validate_team_membership(user, course_id, team_id):
+    """Validate that the user is a member of the specified team.
+    
+    Returns True if validation passes, False otherwise.
+    For now, this is a placeholder - in production, integrate with
+    Open edX teams service or LMS teams API to verify membership.
+    """
+    if not team_id:
+        return True
+    
+    # TODO: Integrate with Open edX teams service
+    # Example integration (when teams app is available):
+    # try:
+    #     from lms.djangoapps.teams.models import CourseTeamMembership
+    #     return CourseTeamMembership.objects.filter(
+    #         user=user,
+    #         team__course_id=course_id,
+    #         team__team_id=team_id
+    #     ).exists()
+    # except ImportError:
+    #     logger.warning("Teams app not available, skipping team membership validation")
+    #     return True
+    
+    # For now, log and allow (fail open for compatibility)
+    logger.warning(
+        "Team membership validation not implemented - user %s requesting team %s access",
+        user.id, team_id
+    )
+    return True
+
+
 @method_decorator([login_required, csrf_exempt], name="dispatch")
 class LearnerLabView(View):
     service = LabService()
@@ -59,6 +90,16 @@ class LearnerLabView(View):
                 return None, None, JsonResponse({"state": "missing", "message": "Lab not configured", "vms": []})
 
         team_id = _team_id_from_request(request)
+        
+        # Validate team membership in team mode
+        if definition.mode == "team" and team_id:
+            if not _validate_team_membership(request.user, course_id, team_id):
+                logger.warning(
+                    "User %s attempted to access team %s lab without membership",
+                    request.user.id, team_id
+                )
+                return definition, None, JsonResponse({"message": "Not a member of this team"}, status=403)
+        
         try:
             alloc = self.service.allocation_for(definition, request.user.id, team_id)
         except ValueError as exc:
