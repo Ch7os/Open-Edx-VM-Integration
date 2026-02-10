@@ -19,14 +19,27 @@ from ..tasks import delete_lab, provision_lab, reset_lab, stop_lab
 logger = logging.getLogger(__name__)
 
 
+class ActionConflictError(Exception):
+    """Raised when action cannot be enqueued due to rate/lock rules."""
+
+
+def _request_body(request):
+    if not request.body:
+        return {}
+    try:
+        return json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
 def _xblock_config_from_request(request):
-    body = {}
-    if request.body:
-        try:
-            body = json.loads(request.body.decode("utf-8"))
-        except Exception:  # pylint: disable=broad-except
-            body = {}
+    body = _request_body(request)
     return body.get("xblock_config", {})
+
+
+def _team_id_from_request(request, fallback=None):
+    body = _request_body(request)
+    return request.GET.get("team_id") or body.get("team_id") or fallback
 
 
 @method_decorator([login_required, csrf_exempt], name="dispatch")
@@ -43,12 +56,26 @@ class LearnerLabView(View):
         if not definition:
             return None, None, JsonResponse({"state": "missing", "message": "Lab not configured", "vms": []})
 
-        team_id = request.GET.get("team_id")
+        team_id = _team_id_from_request(request)
         alloc = self.service.allocation_for(definition, request.user.id, team_id)
         instance = LabInstance.objects.filter(allocation_key=alloc).first()
         if instance and instance.user_id and instance.user_id != request.user.id and not is_staff(request.user):
             return definition, None, JsonResponse({"message": "Forbidden"}, status=403)
         return definition, instance, None
+
+    def _enqueue(self, *, instance, definition, user_id, action, task_func):
+        try:
+            self.service.check_rate_limit(instance, definition.cooldown_seconds)
+            self.service.lock_instance(instance)
+        except RuntimeError as exc:
+            raise ActionConflictError(str(exc)) from exc
+
+        op = task_func.delay(instance.id, user_id)
+        self.service.log_action(instance, user_id, action, result="accepted", details={"task_id": op.id})
+        payload = self.service.serialize_instance(instance)
+        payload["operation_id"] = op.id
+        payload["message"] = f"{action} accepted"
+        return payload
 
     def get(self, request, course_id, block_id, action):
         if action != "status":
@@ -65,44 +92,40 @@ class LearnerLabView(View):
         if err:
             return err
 
-        team_id = request.GET.get("team_id")
-        if action == "start":
+        team_id = _team_id_from_request(request)
+        try:
+            if action == "start":
+                if not instance:
+                    instance, _ = self.service.create_instance(definition, request.user.id, team_id)
+                if instance.vms.exists():
+                    payload = self._enqueue(instance=instance, definition=definition, user_id=request.user.id, action="restart", task_func=provision_lab)
+                else:
+                    payload = self._enqueue(instance=instance, definition=definition, user_id=request.user.id, action="start", task_func=provision_lab)
+                return JsonResponse(payload)
+
             if not instance:
-                instance, created = self.service.create_instance(definition, request.user.id, team_id)
-                if created:
-                    op = provision_lab.delay(instance.id, request.user.id)
-                    self.service.log_action(instance, request.user.id, "start", result="accepted", details={"task_id": op.id})
-                    payload = self.service.serialize_instance(instance)
-                    payload["operation_id"] = op.id
-                    payload["message"] = "Provisioning started"
-                    return JsonResponse(payload)
-            self.service.check_rate_limit(instance, definition.cooldown_seconds)
-            op = provision_lab.delay(instance.id, request.user.id)
-            payload = self.service.serialize_instance(instance)
-            payload["operation_id"] = op.id
+                return JsonResponse({"message": "No instance"}, status=404)
+
+            if action == "stop":
+                payload = self._enqueue(instance=instance, definition=definition, user_id=request.user.id, action="stop", task_func=stop_lab)
+            elif action == "restart":
+                payload = self._enqueue(instance=instance, definition=definition, user_id=request.user.id, action="restart", task_func=provision_lab)
+            elif action == "reset":
+                payload = self._enqueue(instance=instance, definition=definition, user_id=request.user.id, action="reset", task_func=reset_lab)
+            elif action == "extend":
+                self.service.check_rate_limit(instance, definition.cooldown_seconds)
+                self.service.extend_instance(instance)
+                self.service.log_action(instance, request.user.id, "extend", result="success")
+                payload = self.service.serialize_instance(instance)
+                payload["message"] = "extended"
+            else:
+                return JsonResponse({"message": "Unsupported action"}, status=400)
             return JsonResponse(payload)
-
-        if not instance:
-            return JsonResponse({"message": "No instance"}, status=404)
-
-        self.service.check_rate_limit(instance, definition.cooldown_seconds)
-
-        if action == "stop":
-            op = stop_lab.delay(instance.id, request.user.id)
-        elif action == "restart":
-            op = provision_lab.delay(instance.id, request.user.id)
-        elif action == "reset":
-            op = reset_lab.delay(instance.id, request.user.id)
-        elif action == "extend":
-            instance.expires_at = instance.expires_at + (instance.expires_at - instance.created_at) / 4
-            instance.save(update_fields=["expires_at", "updated_at"])
-            op = None
-        else:
-            return JsonResponse({"message": "Unsupported action"}, status=400)
-
-        payload = self.service.serialize_instance(instance)
-        payload["operation_id"] = op.id if op else None
-        return JsonResponse(payload)
+        except ActionConflictError as exc:
+            return JsonResponse({"message": str(exc)}, status=429)
+        except RuntimeError as exc:
+            self.service.log_action(instance, request.user.id, action, result="error", details={"error": str(exc)})
+            return JsonResponse({"message": str(exc)}, status=400)
 
 
 @method_decorator([login_required, csrf_exempt], name="dispatch")
@@ -139,7 +162,7 @@ class AdminInstanceView(View):
 
     def post(self, request, instance_id):
         instance = LabInstance.objects.get(id=instance_id)
-        action = json.loads(request.body.decode("utf-8")).get("action")
+        action = _request_body(request).get("action")
         if action == "stop":
             op = stop_lab.delay(instance.id, request.user.id)
         elif action == "reset":

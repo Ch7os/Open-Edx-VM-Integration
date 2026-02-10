@@ -21,6 +21,8 @@ class LabDefinition(TimeStampedModel):
     ttl_minutes = models.PositiveIntegerField(default=120)
     max_instances_per_scope = models.PositiveIntegerField(default=1)
     cooldown_seconds = models.PositiveIntegerField(default=5)
+    allow_extend = models.BooleanField(default=True)
+    extend_minutes = models.PositiveIntegerField(default=30)
     network_strategy = models.CharField(max_length=32, default="pool")
     network_config = models.JSONField(default=dict, blank=True)
     vm_specs = models.JSONField(default=list)

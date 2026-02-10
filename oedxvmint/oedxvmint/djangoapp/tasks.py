@@ -11,24 +11,45 @@ from .services.lab_service import LabService
 def provision_lab(self, instance_id, user_id=None):
     service = LabService()
     instance = LabInstance.objects.select_related("definition").get(id=instance_id)
-    service.provision_topology(instance)
-    service.log_action(instance, user_id, "start", result="success", details={"task_id": self.request.id})
+    try:
+        if instance.vms.exists():
+            service.start_existing(instance)
+        else:
+            service.provision_topology(instance)
+        service.log_action(instance, user_id, "start", result="success", details={"task_id": self.request.id})
+    except Exception as exc:  # noqa: BLE001
+        service.log_action(instance, user_id, "start", result="error", details={"task_id": self.request.id, "error": str(exc)})
+        raise
+    finally:
+        service.unlock_instance(instance)
 
 
 @shared_task(bind=True)
 def stop_lab(self, instance_id, user_id=None):
     service = LabService()
     instance = LabInstance.objects.get(id=instance_id)
-    service.stop_instance(instance)
-    service.log_action(instance, user_id, "stop", result="success", details={"task_id": self.request.id})
+    try:
+        service.stop_instance(instance)
+        service.log_action(instance, user_id, "stop", result="success", details={"task_id": self.request.id})
+    except Exception as exc:  # noqa: BLE001
+        service.log_action(instance, user_id, "stop", result="error", details={"task_id": self.request.id, "error": str(exc)})
+        raise
+    finally:
+        service.unlock_instance(instance)
 
 
 @shared_task(bind=True)
 def reset_lab(self, instance_id, user_id=None):
     service = LabService()
     instance = LabInstance.objects.select_related("definition").get(id=instance_id)
-    service.reset_instance(instance)
-    service.log_action(instance, user_id, "reset", result="success", details={"task_id": self.request.id})
+    try:
+        service.reset_instance(instance)
+        service.log_action(instance, user_id, "reset", result="success", details={"task_id": self.request.id})
+    except Exception as exc:  # noqa: BLE001
+        service.log_action(instance, user_id, "reset", result="error", details={"task_id": self.request.id, "error": str(exc)})
+        raise
+    finally:
+        service.unlock_instance(instance)
 
 
 @shared_task(bind=True)

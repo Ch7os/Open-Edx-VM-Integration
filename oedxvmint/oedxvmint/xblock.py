@@ -21,7 +21,7 @@ class HTBLabXBlock(StudioEditableXBlockMixin, XBlock):
     cooldown_seconds = Integer(default=5, scope=Scope.settings)
     network_strategy = String(default="pool", scope=Scope.settings)
     vm_specs_json = String(
-        default='[{"name":"target-1","role":"target","template_ref":"","show_credentials":false}]',
+        default='[{"name":"target-1","role":"target","template_ref":"template-target","show_credentials":false}]',
         scope=Scope.settings,
     )
     author_hint_text = String(default="Attack target from your workstation VM.", scope=Scope.settings)
@@ -46,15 +46,37 @@ class HTBLabXBlock(StudioEditableXBlockMixin, XBlock):
     def resource_string(self, path: str) -> str:
         return pkg_resources.resource_string(__name__, path).decode("utf8")
 
+    def _vm_specs(self):
+        try:
+            payload = json.loads(self.vm_specs_json)
+        except json.JSONDecodeError:
+            return []
+        return payload if isinstance(payload, list) else []
+
     def _context(self) -> dict:
         usage_key = str(self.scope_ids.usage_id)
         course_key = str(self.runtime.course_id) if hasattr(self.runtime, "course_id") else usage_key.split("+")[0]
+        xblock_config = {
+            "display_name": self.display_name,
+            "mode": self.mode,
+            "ttl_minutes": self.ttl_minutes,
+            "max_instances": self.max_instances,
+            "cooldown_seconds": self.cooldown_seconds,
+            "allow_extend": self.allow_extend,
+            "extend_minutes": self.extend_minutes,
+            "network_strategy": self.network_strategy,
+            "network_config": {},
+            "vm_specs": self._vm_specs(),
+            "author_hint_text": self.author_hint_text,
+        }
         return {
             "display_name": self.display_name,
             "course_id": course_key,
             "block_id": usage_key,
             "hint": self.author_hint_text,
             "allow_extend": self.allow_extend,
+            "team_group_id": self.team_group_id,
+            "xblock_config": xblock_config,
         }
 
     def student_view(self, context=None):

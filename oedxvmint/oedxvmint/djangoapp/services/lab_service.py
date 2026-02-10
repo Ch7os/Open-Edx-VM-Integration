@@ -10,6 +10,7 @@ from django.utils import timezone
 from ..models import LabActionLog, LabDefinition, LabInstance, VMInstance
 from .allocation import build_allocation_key
 from .network import allocate_network, release_network
+from .serializers import vm_view_payload
 from .state_machine import can_transition
 from .vcenter import VCenterClient
 
@@ -31,6 +32,8 @@ class LabService:
                 "ttl_minutes": xblock_config.get("ttl_minutes", 120),
                 "max_instances_per_scope": xblock_config.get("max_instances", 1),
                 "cooldown_seconds": xblock_config.get("cooldown_seconds", 5),
+                "allow_extend": xblock_config.get("allow_extend", True),
+                "extend_minutes": xblock_config.get("extend_minutes", 30),
                 "network_strategy": xblock_config.get("network_strategy", "pool"),
                 "network_config": xblock_config.get("network_config", {}),
                 "vm_specs": xblock_config.get("vm_specs", []),
@@ -46,16 +49,18 @@ class LabService:
             "operation_id": None,
             "state": instance.state,
             "message": "ok",
+            "instance_id": instance.id,
+            "allocation_key": instance.allocation_key,
             "expires_at": instance.expires_at.isoformat() if instance.expires_at else None,
             "vms": [
-                {
-                    "role": vm.role,
-                    "state": vm.state,
-                    "ips": vm.ip_addresses,
-                    "creds_visible": vm.creds_visible,
-                    "username": vm.username if vm.creds_visible else None,
-                    "password": vm.password if vm.creds_visible else None,
-                }
+                vm_view_payload(
+                    role=vm.role,
+                    state=vm.state,
+                    ips=vm.ip_addresses,
+                    creds_visible=vm.creds_visible,
+                    username=vm.username,
+                    password=vm.password,
+                )
                 for vm in instance.vms.all()
             ],
         }
@@ -64,7 +69,7 @@ class LabService:
         if timezone.now() - instance.last_action_at < timedelta(seconds=cooldown_seconds):
             raise RuntimeError("Action rate limited")
 
-    def lock_instance(self, instance, seconds=60):
+    def lock_instance(self, instance, seconds=90):
         now = timezone.now()
         if instance.locked_until and instance.locked_until > now:
             raise RuntimeError("Instance is busy")
@@ -154,6 +159,12 @@ class LabService:
         instance.state = "stopped"
         instance.save(update_fields=["state", "updated_at"])
 
+    def extend_instance(self, instance):
+        if not instance.definition.allow_extend:
+            raise RuntimeError("Extension is disabled for this lab")
+        instance.expires_at = instance.expires_at + timedelta(minutes=instance.definition.extend_minutes)
+        instance.save(update_fields=["expires_at", "updated_at"])
+
     def reset_instance(self, instance):
         for vm, spec in zip(instance.vms.all(), instance.definition.vm_specs):
             snapshot = spec.get("snapshot_ref")
@@ -178,8 +189,3 @@ class LabService:
             vm.delete()
         release_network(instance)
         instance.delete()
-
-
-def get_team_id(request, fallback_group=""):
-    team_id = request.GET.get("team_id") or request.POST.get("team_id") or fallback_group
-    return team_id or None
