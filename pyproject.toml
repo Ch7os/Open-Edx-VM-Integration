@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oedxvmint-htblab"
+version = "1.0.0"
+description = "Open edX Tutor plugin providing HTB-like VM lab controls backed by VMware vCenter"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "XBlock>=1.7.0",
+  "xblock-utils>=4.0.0",
+  "Django>=4.2",
+  "celery>=5.3",
+  "requests>=2.31",
+]
+
+[tool.setuptools]
+package-dir = {"" = "oedxvmint"}
+
+[tool.setuptools.packages.find]
+where = ["oedxvmint"]
+
+[tool.setuptools.package-data]
+oedxvmint = ["static/**/*", "translations/**/*"]
+
+[project.entry-points."xblock.v1"]
+oedxvmint = "oedxvmint:HTBLabXBlock"
+
+[project.entry-points."lms.djangoapp"]
+oedxvmint = "oedxvmint.djangoapp.plugin"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
